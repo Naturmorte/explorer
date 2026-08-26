@@ -56,7 +56,11 @@
             <label for="f-page-size">Page size</label>
             <input type="number" id="f-page-size" value="1000" min="1" />
           </div>
-          <div class="field field-wide">
+          <div class="field">
+            <label for="f-roll-years">Roll years</label>
+            <input type="text" id="f-roll-years" placeholder="e.g. 2022,2023 (blank = all)" />
+          </div>
+          <div class="field">
             <label for="f-where">Where</label>
             <input type="text" id="f-where" value="1=1" />
           </div>
@@ -92,7 +96,8 @@
     <!-- Market insights -->
     <section id="tab-insights" class="tab-panel">
       <div class="toolbar">
-        <select id="ins-year"><option value="">All years</option></select>
+        <span class="hint">Years:</span>
+        <div class="year-pills" id="ins-years"></div>
         <select id="ins-city"><option value="">All cities</option></select>
         <select id="ins-category"><option value="">All categories</option></select>
         <select id="ins-use-type"><option value="">All use types</option></select>

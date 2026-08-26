@@ -361,7 +361,7 @@ INSIGHTS_SAMPLE_CAP = 20000
 
 
 def _insights_where(qs: Dict[str, List[str]]) -> tuple:
-    year = qs.get("year", [""])[0]
+    years_raw = qs.get("years", [""])[0]
     city = qs.get("city", [""])[0]
     category = qs.get("category", [""])[0]
     use_type = qs.get("use_type", [""])[0]
@@ -371,12 +371,20 @@ def _insights_where(qs: Dict[str, List[str]]) -> tuple:
     params: List[Any] = []
     if parcel_status == "active":
         where.append("s.status = 'active'")
-    if year:
-        try:
-            where.append("s.roll_year = ?")
-            params.append(int(year))
-        except ValueError:
-            raise ApiError(400, "year must be an integer")
+    if years_raw:
+        year_list: List[int] = []
+        for part in years_raw.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            try:
+                year_list.append(int(part))
+            except ValueError:
+                raise ApiError(400, f"Invalid year in years filter: {part!r}")
+        if year_list:
+            placeholders = ",".join("?" for _ in year_list)
+            where.append(f"s.roll_year IN ({placeholders})")
+            params.extend(year_list)
     if city:
         where.append("json_extract(s.current_json, '$.normalized.city') = ?")
         params.append(city)

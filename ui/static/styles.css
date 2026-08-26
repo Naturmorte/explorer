@@ -355,6 +355,23 @@ main {
   color: var(--text);
 }
 
+.year-pills { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+
+.year-pill {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  border-radius: 999px;
+  padding: 7px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.year-pill:hover { background: var(--surface-alt); }
+.year-pill.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
 .spacer { flex: 1; }
 
 .bulk-actions {

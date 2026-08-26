@@ -213,12 +213,27 @@ async function pollJobStatus(once) {
   }
 }
 
+function composeWhereWithRollYears() {
+  const baseWhere = ($("#f-where").value || "").trim() || "1=1";
+  const yearsRaw = ($("#f-roll-years").value || "").trim();
+  if (!yearsRaw) return baseWhere;
+
+  const years = yearsRaw
+    .split(",")
+    .map((y) => y.trim())
+    .filter((y) => /^\d{4}$/.test(y));
+  if (!years.length) return baseWhere;
+
+  const yearsClause = `RollYear IN (${years.map((y) => `'${y}'`).join(",")})`;
+  return baseWhere === "1=1" ? yearsClause : `(${baseWhere}) AND (${yearsClause})`;
+}
+
 async function startSync(ev) {
   ev.preventDefault();
   const payload = {
     max_records: $("#f-max-records").value.trim(),
     page_size: Number($("#f-page-size").value || 1000),
-    where: $("#f-where").value.trim() || "1=1",
+    where: composeWhereWithRollYears(),
     request_delay: $("#f-request-delay").value,
     resume: $("#f-resume").checked,
     fresh_run: $("#f-fresh-run").checked,
@@ -237,26 +252,54 @@ async function startSync(ev) {
 
 /* ---- market insights --------------------------------------------------- */
 
-const INSIGHTS_FILTER_IDS = ["ins-year", "ins-city", "ins-category", "ins-use-type", "ins-status"];
+const INSIGHTS_FILTER_IDS = ["ins-city", "ins-category", "ins-use-type", "ins-status"];
 const insightsState = { limit: 25, offset: 0 };
+const insightsSelectedYears = new Set(); // empty = all years
+let insightsAvailableYears = [];
+
+function renderYearPills() {
+  const el = $("#ins-years");
+  const allActive = insightsSelectedYears.size === 0;
+  const allBtn = `<button type="button" class="year-pill${allActive ? " active" : ""}" data-year="__all__">All</button>`;
+  const yearBtns = insightsAvailableYears
+    .map((y) => `<button type="button" class="year-pill${insightsSelectedYears.has(String(y)) ? " active" : ""}" data-year="${y}">${y}</button>`)
+    .join("");
+  el.innerHTML = allBtn + yearBtns;
+  $all(".year-pill", el).forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const y = btn.dataset.year;
+      if (y === "__all__") {
+        insightsSelectedYears.clear();
+      } else if (insightsSelectedYears.has(y)) {
+        insightsSelectedYears.delete(y);
+      } else {
+        insightsSelectedYears.add(y);
+      }
+      insightsState.offset = 0;
+      renderYearPills();
+      loadInsights();
+    });
+  });
+}
 
 async function loadInsightsOptions() {
   const data = await api("/api/insights/options");
+  insightsAvailableYears = data.years;
+  renderYearPills();
+
   const fill = (id, values, allLabel) => {
     const sel = $(`#${id}`);
     const current = sel.value;
     sel.innerHTML = `<option value="">${allLabel}</option>` + values.map((v) => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");
     if (values.some((v) => String(v) === current)) sel.value = current;
   };
-  fill("ins-year", data.years, "All years");
   fill("ins-city", data.cities, "All cities");
   fill("ins-category", data.categories, "All categories");
   fill("ins-use-type", data.use_types, "All use types");
 }
 
 function insightsParams() {
-  return new URLSearchParams({
-    year: $("#ins-year").value,
+  const params = new URLSearchParams({
     city: $("#ins-city").value,
     category: $("#ins-category").value,
     use_type: $("#ins-use-type").value,
@@ -264,6 +307,8 @@ function insightsParams() {
     limit: insightsState.limit,
     offset: insightsState.offset,
   });
+  if (insightsSelectedYears.size) params.set("years", [...insightsSelectedYears].join(","));
+  return params;
 }
 
 function renderOwnershipChart(summary) {
