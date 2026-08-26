@@ -213,6 +213,52 @@ async function pollJobStatus(once) {
   }
 }
 
+let sourceYearsAvailable = [];
+
+function currentRollYearsInput() {
+  return new Set(
+    ($("#f-roll-years").value || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+  );
+}
+
+function renderSourceYearsHint() {
+  const el = $("#source-years-hint");
+  if (!sourceYearsAvailable.length) return;
+  const selected = currentRollYearsInput();
+  el.innerHTML =
+    `<span class="hint-label">On source:</span>` +
+    sourceYearsAvailable
+      .map((y) => `<button type="button" class="year-pill${selected.has(String(y)) ? " active" : ""}" data-year="${y}">${y}</button>`)
+      .join("");
+  $all(".year-pill", el).forEach((btn) =>
+    btn.addEventListener("click", () => {
+      const input = $("#f-roll-years");
+      const current = Array.from(currentRollYearsInput());
+      const y = btn.dataset.year;
+      const idx = current.indexOf(y);
+      if (idx >= 0) current.splice(idx, 1);
+      else current.push(y);
+      input.value = current.sort().join(",");
+      renderSourceYearsHint();
+    })
+  );
+}
+
+async function loadSourceYearsHint() {
+  try {
+    const data = await api("/api/source/years");
+    sourceYearsAvailable = data.years || [];
+  } catch (err) {
+    sourceYearsAvailable = [];
+    $("#source-years-hint").innerHTML = `<span class="hint-label">Could not reach the source to list available years.</span>`;
+    return;
+  }
+  renderSourceYearsHint();
+}
+
 function composeWhereWithRollYears() {
   const baseWhere = ($("#f-where").value || "").trim() || "1=1";
   const yearsRaw = ($("#f-roll-years").value || "").trim();
@@ -803,8 +849,11 @@ function init() {
   $("#modal-backdrop").addEventListener("click", closeModal);
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal(); });
 
+  $("#f-roll-years").addEventListener("input", renderSourceYearsHint);
+
   activateTab("overview");
   pollJobStatus(false);
+  loadSourceYearsHint();
 
   state.refreshTimer = setInterval(() => {
     loadOverview().catch(() => {});

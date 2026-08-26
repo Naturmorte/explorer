@@ -32,6 +32,7 @@ import sqlite3
 import subprocess
 import sys
 import threading
+import time
 import uuid
 from collections import deque
 from datetime import datetime, timezone
@@ -397,6 +398,44 @@ def _insights_where(qs: Dict[str, List[str]]) -> tuple:
     return " AND ".join(where), params
 
 
+# --------------------------------------------------------------------------
+# Source metadata (live queries against the remote ArcGIS service, not the
+# local state DB -- lets the sync form tell you which roll years actually
+# exist upstream before you guess one that returns zero rows)
+# --------------------------------------------------------------------------
+
+_SOURCE_YEARS_CACHE: Dict[str, Any] = {"years": None, "fetched_at": 0.0}
+SOURCE_YEARS_CACHE_TTL_SECONDS = 600  # avoid hammering ArcGIS on every tab visit
+
+
+def handle_source_years(conn: sqlite3.Connection, qs: Dict[str, List[str]]) -> Dict[str, Any]:
+    now = time.time()
+    cached_years = _SOURCE_YEARS_CACHE["years"]
+    if cached_years is not None and (now - _SOURCE_YEARS_CACHE["fetched_at"]) < SOURCE_YEARS_CACHE_TTL_SECONDS:
+        return {"years": cached_years, "cached": True}
+
+    try:
+        client = sync.ArcGISClient(sync.Config())
+        layer_info = sync.LayerDiscovery(client).discover(sync.DEFAULT_FEATURE_SERVER_URL)
+        result = client.query(
+            layer_info.query_url,
+            {"where": "1=1", "outFields": "RollYear", "returnDistinctValues": "true"},
+        )
+        years = sorted(
+            {
+                int(f["attributes"]["RollYear"])
+                for f in result.get("features", [])
+                if (f.get("attributes") or {}).get("RollYear")
+            }
+        )
+    except (sync.ArcGISError, ValueError, KeyError) as exc:
+        raise ApiError(502, f"Could not reach the ArcGIS source: {exc}")
+
+    _SOURCE_YEARS_CACHE["years"] = years
+    _SOURCE_YEARS_CACHE["fetched_at"] = now
+    return {"years": years, "cached": False}
+
+
 def handle_insights_options(conn: sqlite3.Connection, qs: Dict[str, List[str]]) -> Dict[str, Any]:
     def distinct(expr: str) -> List[Any]:
         rows = conn.execute(
@@ -547,6 +586,7 @@ GET_ROUTES: Dict[str, Callable[[sqlite3.Connection, Dict[str, List[str]]], Dict[
     "/api/snapshot": handle_snapshot,
     "/api/insights/options": handle_insights_options,
     "/api/insights/query": handle_insights_query,
+    "/api/source/years": handle_source_years,
     "/api/errors": handle_errors,
     "/api/sync/status": handle_sync_status,
 }

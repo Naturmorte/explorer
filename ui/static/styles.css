@@ -237,6 +237,7 @@ main {
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field label { font-size: 12px; color: var(--text-muted); font-weight: 550; }
 .field-wide { grid-column: span 2; }
+.field-full { grid-column: 1 / -1; }
 .field-checks { flex-direction: row; gap: 18px; align-items: center; padding-bottom: 8px; }
 .field-checks label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text); font-weight: 400; }
 .field-actions { justify-content: flex-end; }
@@ -371,6 +372,10 @@ main {
 
 .year-pill:hover { background: var(--surface-alt); }
 .year-pill.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.year-pills-compact { margin-top: 6px; align-items: center; }
+.year-pills-compact .hint-label { font-size: 11px; color: var(--text-faint); margin-right: 2px; }
+.year-pills-compact .year-pill { padding: 3px 8px; font-size: 11px; }
 
 .spacer { flex: 1; }
 
