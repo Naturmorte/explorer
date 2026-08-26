@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>LA Parcel Sync</title>
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">&#9671;</span>
+      <div>
+        <h1>LA Parcel Sync</h1>
+        <p>LA County Assessor Parcel Data &mdash; sync &amp; review</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <label class="reviewer-field">
+        <span>Reviewer</span>
+        <input id="reviewer-name" type="text" placeholder="your name" autocomplete="off" />
+      </label>
+      <button id="export-btn" class="btn btn-ghost" title="Stream the current SQLite state to an NDJSON download">
+        Export current
+      </button>
+    </div>
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button class="tab active" data-tab="overview">Overview</button>
+    <button class="tab" data-tab="review">
+      Review Queue <span id="pending-badge" class="pill pill-warning" hidden>0</span>
+    </button>
+    <button class="tab" data-tab="reviewed">Reviewed</button>
+    <button class="tab" data-tab="runs">Runs</button>
+    <button class="tab" data-tab="errors">Errors</button>
+  </nav>
+
+  <main id="app">
+    <!-- Overview -->
+    <section id="tab-overview" class="tab-panel active">
+      <div class="stat-grid" id="stat-grid"></div>
+
+      <div class="card">
+        <div class="card-header">
+          <h2>Start a sync</h2>
+          <span id="job-status-badge" class="pill" hidden></span>
+        </div>
+        <form id="sync-form" class="sync-form">
+          <div class="field">
+            <label for="f-max-records">Max records</label>
+            <input type="text" id="f-max-records" placeholder="none = full sync" value="100" />
+          </div>
+          <div class="field">
+            <label for="f-page-size">Page size</label>
+            <input type="number" id="f-page-size" value="1000" min="1" />
+          </div>
+          <div class="field field-wide">
+            <label for="f-where">Where</label>
+            <input type="text" id="f-where" value="1=1" />
+          </div>
+          <div class="field">
+            <label for="f-request-delay">Request delay (s)</label>
+            <input type="number" id="f-request-delay" value="0.1" step="0.1" min="0" />
+          </div>
+          <div class="field field-checks">
+            <label><input type="checkbox" id="f-resume" /> Resume interrupted run</label>
+            <label><input type="checkbox" id="f-fresh-run" /> Fresh run</label>
+          </div>
+          <div class="field field-actions">
+            <button type="submit" class="btn btn-primary" id="start-btn">Start sync</button>
+          </div>
+        </form>
+        <p class="hint" id="job-hint" hidden></p>
+        <pre id="job-log" class="log-console" hidden></pre>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h2>Recent runs</h2></div>
+        <div class="table-wrap">
+          <table id="recent-runs-table">
+            <thead>
+              <tr><th>Run</th><th>Started</th><th>Status</th><th>Fetched</th><th>Ins</th><th>Upd</th><th>Fail</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Review queue -->
+    <section id="tab-review" class="tab-panel">
+      <div class="toolbar">
+        <input type="search" id="review-search" placeholder="Search AIN, address, city..." />
+        <select id="review-event-filter">
+          <option value="all">All events</option>
+          <option value="inserted">Inserted</option>
+          <option value="updated">Updated</option>
+        </select>
+        <div class="spacer"></div>
+        <div id="bulk-actions" class="bulk-actions" hidden>
+          <span id="bulk-count"></span>
+          <input type="text" id="bulk-note" placeholder="Note (optional)" />
+          <button class="btn btn-accept" id="bulk-accept">Accept</button>
+          <button class="btn btn-reject" id="bulk-reject">Reject</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table id="review-table">
+          <thead>
+            <tr>
+              <th class="col-check"><input type="checkbox" id="review-select-all" title="Select all on this page" /></th>
+              <th>AIN</th><th>Year</th><th>Event</th><th>Address</th><th>City</th>
+              <th>Total value</th><th>Last seen</th><th class="col-actions">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="review-tbody"></tbody>
+        </table>
+      </div>
+      <div class="pager" id="review-pager"></div>
+    </section>
+
+    <!-- Reviewed -->
+    <section id="tab-reviewed" class="tab-panel">
+      <div class="toolbar">
+        <select id="reviewed-status-filter">
+          <option value="accepted">Accepted</option>
+          <option value="rejected">Rejected</option>
+        </select>
+      </div>
+      <div class="table-wrap">
+        <table id="reviewed-table">
+          <thead>
+            <tr><th>AIN</th><th>Year</th><th>Event</th><th>Reviewer</th><th>Reviewed at</th><th>Note</th><th class="col-actions">Actions</th></tr>
+          </thead>
+          <tbody id="reviewed-tbody"></tbody>
+        </table>
+      </div>
+      <div class="pager" id="reviewed-pager"></div>
+    </section>
+
+    <!-- Runs -->
+    <section id="tab-runs" class="tab-panel">
+      <div class="table-wrap">
+        <table id="runs-table">
+          <thead>
+            <tr>
+              <th>Run</th><th>Started</th><th>Finished</th><th>Status</th><th>Where</th><th>Max</th>
+              <th>Fetched</th><th>Ins</th><th>Upd</th><th>Unch</th><th>Fail</th><th>Inactivated</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="runs-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Errors -->
+    <section id="tab-errors" class="tab-panel">
+      <div class="toolbar">
+        <select id="errors-run-select"><option value="">Select a run with errors&hellip;</option></select>
+      </div>
+      <div class="table-wrap">
+        <table id="errors-table">
+          <thead><tr><th>Object ID</th><th>Error</th><th>Recorded</th><th></th></tr></thead>
+          <tbody id="errors-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <div id="detail-modal" class="modal" hidden>
+    <div class="modal-backdrop" id="modal-backdrop"></div>
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h3 id="modal-title">Snapshot</h3>
+        <button id="modal-close" class="btn btn-ghost btn-icon" aria-label="Close">&times;</button>
+      </div>
+      <div id="modal-body" class="modal-body"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
