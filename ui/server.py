@@ -24,6 +24,7 @@ Run from the project root:
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import mimetypes
 import re
@@ -45,6 +46,7 @@ SYNC_SCRIPT = PROJECT_ROOT / "la_county_parcel_sync.py"
 
 sys.path.insert(0, str(PROJECT_ROOT))
 import la_county_parcel_sync as sync  # noqa: E402  (path must be set up first)
+import insights  # noqa: E402  (sibling module in ui/, analytics only, no core-script changes)
 
 DEFAULT_STATE_DB = PROJECT_ROOT / "state" / "parcels.sqlite3"
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "output"
@@ -348,6 +350,93 @@ def handle_sync_status(conn: sqlite3.Connection, qs: Dict[str, List[str]]) -> Di
 
 
 # --------------------------------------------------------------------------
+# Market insights (investor-lean signals -- see ui/insights.py)
+# --------------------------------------------------------------------------
+
+# Hard cap on how many matching rows get pulled into Python for cohort
+# aggregation/ranking. Filters run in SQL first (so the cap applies to the
+# *filtered* set, not the whole table); past this the summary/charts are
+# based on a labeled sample rather than the full filtered set.
+INSIGHTS_SAMPLE_CAP = 20000
+
+
+def _insights_where(qs: Dict[str, List[str]]) -> tuple:
+    year = qs.get("year", [""])[0]
+    city = qs.get("city", [""])[0]
+    category = qs.get("category", [""])[0]
+    use_type = qs.get("use_type", [""])[0]
+    parcel_status = qs.get("status", ["active"])[0]
+
+    where = ["1=1"]
+    params: List[Any] = []
+    if parcel_status == "active":
+        where.append("s.status = 'active'")
+    if year:
+        try:
+            where.append("s.roll_year = ?")
+            params.append(int(year))
+        except ValueError:
+            raise ApiError(400, "year must be an integer")
+    if city:
+        where.append("json_extract(s.current_json, '$.normalized.city') = ?")
+        params.append(city)
+    if category:
+        where.append("json_extract(s.current_json, '$.raw_attributes.UseCodeDescChar1') = ?")
+        params.append(category)
+    if use_type:
+        where.append("json_extract(s.current_json, '$.normalized.property_use_type') = ?")
+        params.append(use_type)
+    return " AND ".join(where), params
+
+
+def handle_insights_options(conn: sqlite3.Connection, qs: Dict[str, List[str]]) -> Dict[str, Any]:
+    def distinct(expr: str) -> List[Any]:
+        rows = conn.execute(
+            f"SELECT DISTINCT {expr} AS v FROM parcel_snapshots s WHERE v IS NOT NULL AND v != '' ORDER BY v"
+        ).fetchall()
+        return [r["v"] for r in rows]
+
+    return {
+        "years": distinct("s.roll_year"),
+        "cities": distinct("json_extract(s.current_json, '$.normalized.city')"),
+        "categories": distinct("json_extract(s.current_json, '$.raw_attributes.UseCodeDescChar1')"),
+        "use_types": distinct("json_extract(s.current_json, '$.normalized.property_use_type')"),
+    }
+
+
+def handle_insights_query(conn: sqlite3.Connection, qs: Dict[str, List[str]]) -> Dict[str, Any]:
+    limit = max(1, min(200, int(qs.get("limit", ["25"])[0])))
+    offset = max(0, int(qs.get("offset", ["0"])[0]))
+    where_sql, params = _insights_where(qs)
+
+    total_matching = conn.execute(f"SELECT COUNT(*) FROM parcel_snapshots s WHERE {where_sql}", params).fetchone()[0]
+
+    cur = conn.execute(
+        f"""SELECT s.current_json FROM parcel_snapshots s WHERE {where_sql}
+            ORDER BY s.last_seen_at DESC LIMIT ?""",
+        [*params, INSIGHTS_SAMPLE_CAP],
+    )
+    signals: List[insights.ParcelSignals] = []
+    rows = cur.fetchmany(500)
+    while rows:
+        for row in rows:
+            signals.append(insights.extract_signals(json.loads(row["current_json"])))
+        rows = cur.fetchmany(500)
+
+    summary = insights.summarize(signals)
+    summary["total_matching"] = total_matching
+    summary["sampled"] = len(signals)
+
+    page = signals[offset : offset + limit]
+    return {
+        "summary": summary,
+        "items": [dataclasses.asdict(s) for s in page],
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+# --------------------------------------------------------------------------
 # POST handlers
 # --------------------------------------------------------------------------
 
@@ -448,6 +537,8 @@ GET_ROUTES: Dict[str, Callable[[sqlite3.Connection, Dict[str, List[str]]], Dict[
     "/api/runs": handle_runs,
     "/api/changes": handle_changes,
     "/api/snapshot": handle_snapshot,
+    "/api/insights/options": handle_insights_options,
+    "/api/insights/query": handle_insights_query,
     "/api/errors": handle_errors,
     "/api/sync/status": handle_sync_status,
 }

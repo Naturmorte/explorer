@@ -101,6 +101,7 @@ function activateTab(name) {
   $all(".tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === name));
   $all(".tab-panel").forEach((p) => p.classList.toggle("active", p.id === `tab-${name}`));
   if (name === "overview") { loadOverview(); loadRecentRuns(); }
+  if (name === "insights") loadInsightsOptions().then(loadInsights);
   if (name === "review") loadReviewQueue();
   if (name === "reviewed") loadReviewed();
   if (name === "runs") loadRuns();
@@ -232,6 +233,140 @@ async function startSync(ev) {
     toast(`Could not start sync: ${err.message}`);
     $("#start-btn").disabled = false;
   }
+}
+
+/* ---- market insights --------------------------------------------------- */
+
+const INSIGHTS_FILTER_IDS = ["ins-year", "ins-city", "ins-category", "ins-use-type", "ins-status"];
+const insightsState = { limit: 25, offset: 0 };
+
+async function loadInsightsOptions() {
+  const data = await api("/api/insights/options");
+  const fill = (id, values, allLabel) => {
+    const sel = $(`#${id}`);
+    const current = sel.value;
+    sel.innerHTML = `<option value="">${allLabel}</option>` + values.map((v) => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");
+    if (values.some((v) => String(v) === current)) sel.value = current;
+  };
+  fill("ins-year", data.years, "All years");
+  fill("ins-city", data.cities, "All cities");
+  fill("ins-category", data.categories, "All categories");
+  fill("ins-use-type", data.use_types, "All use types");
+}
+
+function insightsParams() {
+  return new URLSearchParams({
+    year: $("#ins-year").value,
+    city: $("#ins-city").value,
+    category: $("#ins-category").value,
+    use_type: $("#ins-use-type").value,
+    status: $("#ins-status").value,
+    limit: insightsState.limit,
+    offset: insightsState.offset,
+  });
+}
+
+function renderOwnershipChart(summary) {
+  const total = summary.count || 0;
+  const chartEl = $("#ownership-chart");
+  const legendEl = $("#ownership-legend");
+  if (!total) {
+    chartEl.innerHTML = "";
+    legendEl.innerHTML = `<span class="muted">No matching parcels.</span>`;
+    return;
+  }
+  const parts = [
+    { cls: "owner", label: "Owner-occupied", count: summary.owner_occupied },
+    { cls: "rental", label: "Likely rental / investment", count: summary.likely_rental },
+    { cls: "unknown", label: "Unknown", count: summary.unknown_ownership },
+  ].filter((p) => p.count > 0);
+
+  chartEl.innerHTML = parts
+    .map((p) => {
+      const pct = (p.count / total) * 100;
+      const showLabel = pct >= 12 ? `${Math.round(pct)}%` : "";
+      return `<div class="seg ${p.cls}" style="width:${pct}%" title="${escapeHtml(p.label)}: ${p.count.toLocaleString()} (${pct.toFixed(1)}%)">${showLabel}</div>`;
+    })
+    .join("");
+
+  legendEl.innerHTML = parts
+    .map(
+      (p) =>
+        `<span class="item"><span class="swatch ${p.cls}"></span>${escapeHtml(p.label)} &middot; ${p.count.toLocaleString()} (${((p.count / total) * 100).toFixed(1)}%)</span>`
+    )
+    .join("");
+}
+
+function renderTenureChart(summary) {
+  const el = $("#tenure-chart");
+  const dist = (summary.tenure_distribution || []).filter((d) => d.count > 0 || d.key !== "unknown");
+  const max = Math.max(1, ...dist.map((d) => d.count));
+  if (!dist.some((d) => d.count > 0)) {
+    el.innerHTML = `<span class="muted">No matching parcels.</span>`;
+    return;
+  }
+  el.innerHTML = dist
+    .map(
+      (d) => `<div class="hbar-row" title="${escapeHtml(d.label)}: ${d.count.toLocaleString()}">
+        <span class="hbar-label">${escapeHtml(d.label)}</span>
+        <span class="hbar-track"><span class="hbar-fill" style="width:${(d.count / max) * 100}%"></span></span>
+        <span class="hbar-value">${d.count.toLocaleString()}</span>
+      </div>`
+    )
+    .join("");
+}
+
+function ownershipPill(v) {
+  if (v === true) return `<span class="pill pill-accent">Owner-occ.</span>`;
+  if (v === false) return `<span class="pill pill-warning">Rental/inv.</span>`;
+  return `<span class="pill pill-neutral">Unknown</span>`;
+}
+
+async function loadInsights() {
+  const data = await api(`/api/insights/query?${insightsParams()}`);
+  const s = data.summary;
+
+  $("#ins-stat-grid").innerHTML = [
+    statCard("Matching parcels", s.total_matching.toLocaleString(), "accent"),
+    statCard("Owner-occupied", s.owner_occupied.toLocaleString(), "ok"),
+    statCard("Likely rental / investment", s.likely_rental.toLocaleString(), "warn"),
+    statCard("Median $/sqft", s.median_value_per_sqft != null ? fmtMoney(s.median_value_per_sqft) : "—", ""),
+    statCard("Median years held", s.median_years_held != null ? s.median_years_held : "—", ""),
+  ].join("");
+
+  const hint = $("#ins-sample-hint");
+  hint.textContent =
+    s.total_matching > s.sampled
+      ? `Charts based on a sample of ${s.sampled.toLocaleString()} of ${s.total_matching.toLocaleString()} matching parcels.`
+      : `${s.total_matching.toLocaleString()} matching parcel(s).`;
+
+  renderOwnershipChart(s);
+  renderTenureChart(s);
+
+  const tbody = $("#insights-tbody");
+  if (!data.items.length) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="8">No parcels match these filters.</td></tr>`;
+  } else {
+    tbody.innerHTML = data.items
+      .map(
+        (p) => `<tr>
+          <td class="mono">${escapeHtml(p.property_id)}</td>
+          <td>${fmtNum(p.roll_year)}</td>
+          <td class="wrap">${escapeHtml(p.use_category) || "—"}</td>
+          <td>${escapeHtml(p.city) || "—"}</td>
+          <td>${p.value_per_sqft != null ? fmtMoney(p.value_per_sqft) : "—"}</td>
+          <td>${p.years_since_basis_reset != null ? p.years_since_basis_reset : "—"}</td>
+          <td>${ownershipPill(p.owner_occupied)}</td>
+          <td class="wrap" title="${escapeHtml(p.behavior_detail)}">${escapeHtml(p.behavior_label)}</td>
+        </tr>`
+      )
+      .join("");
+  }
+
+  renderPager($("#insights-pager"), { total: s.sampled, limit: insightsState.limit, offset: insightsState.offset }, (offset) => {
+    insightsState.offset = offset;
+    loadInsights();
+  });
 }
 
 /* ---- review queue --------------------------------------------------- */
@@ -576,6 +711,13 @@ function init() {
 
   $("#sync-form").addEventListener("submit", startSync);
   $("#export-btn").addEventListener("click", () => { window.location.href = "/api/export"; });
+
+  INSIGHTS_FILTER_IDS.forEach((id) => {
+    $(`#${id}`).addEventListener("change", () => {
+      insightsState.offset = 0;
+      loadInsights();
+    });
+  });
 
   let searchDebounce;
   $("#review-search").addEventListener("input", (e) => {

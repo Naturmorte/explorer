@@ -28,6 +28,7 @@
 
   <nav class="tabs" id="tabs">
     <button class="tab active" data-tab="overview">Overview</button>
+    <button class="tab" data-tab="insights">Market Insights</button>
     <button class="tab" data-tab="review">
       Review Queue <span id="pending-badge" class="pill pill-warning" hidden>0</span>
     </button>
@@ -85,6 +86,65 @@
             <tbody></tbody>
           </table>
         </div>
+      </div>
+    </section>
+
+    <!-- Market insights -->
+    <section id="tab-insights" class="tab-panel">
+      <div class="toolbar">
+        <select id="ins-year"><option value="">All years</option></select>
+        <select id="ins-city"><option value="">All cities</option></select>
+        <select id="ins-category"><option value="">All categories</option></select>
+        <select id="ins-use-type"><option value="">All use types</option></select>
+        <select id="ins-status">
+          <option value="active">Active only</option>
+          <option value="all">Active + inactive</option>
+        </select>
+        <div class="spacer"></div>
+        <span class="hint" id="ins-sample-hint"></span>
+      </div>
+
+      <div class="stat-grid" id="ins-stat-grid"></div>
+
+      <div class="card-grid-2">
+        <div class="card">
+          <div class="card-header"><h2>Ownership mix</h2></div>
+          <div id="ownership-chart" class="stacked-bar"></div>
+          <div id="ownership-legend" class="chart-legend"></div>
+          <p class="hint">
+            "Owner-occupied" is inferred from a Homeowners&rsquo; Exemption on file &mdash;
+            California only grants it on an owner&rsquo;s primary residence, so its absence
+            is a direct signal of rental/investment use.
+          </p>
+        </div>
+        <div class="card">
+          <div class="card-header"><h2>Years since last assessment reset</h2></div>
+          <div id="tenure-chart" class="hbar-chart"></div>
+          <p class="hint">
+            Tenure proxy from the Prop&nbsp;13 land assessment base year. A longer gap means a
+            bigger cushion between the owner&rsquo;s tax basis and current value &mdash; the
+            mechanism behind CA&rsquo;s well-known "rent it out rather than sell it" lock-in effect.
+          </p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h2>Parcels</h2>
+          <span class="hint">Hover a row&rsquo;s lean for the reasoning behind it.</span>
+        </div>
+        <div class="table-wrap">
+          <table id="insights-table">
+            <thead>
+              <tr>
+                <th>AIN</th><th>Year</th><th>Category</th><th>City</th>
+                <th>$/sqft</th><th>Yrs held</th><th>Ownership</th><th>Sell/rent lean</th>
+              </tr>
+            </thead>
+            <tbody id="insights-tbody"></tbody>
+          </table>
+        </div>
+        <div class="pager" id="insights-pager"></div>
       </div>
     </section>
 

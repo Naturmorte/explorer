@@ -521,6 +521,69 @@ details.raw-json pre {
   z-index: 100;
 }
 
+/* Market insights charts -------------------------------------------------
+   Data-encoding colors intentionally distinct from the UI's indigo accent --
+   these are the dataviz-skill reference palette's validated slots 1/2
+   (blue/orange), used in the documented order so the pair clears the CVD
+   gates without needing custom validation. */
+
+:root {
+  --chart-1: #2a78d6;
+  --chart-2: #eb6834;
+  --chart-muted: #898781;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --chart-1: #3987e5;
+    --chart-2: #d95926;
+    --chart-muted: #898781;
+  }
+}
+
+.card-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.stacked-bar {
+  display: flex;
+  height: 30px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--border);
+  gap: 2px;
+}
+
+.stacked-bar .seg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  min-width: 3px;
+  border-radius: 4px;
+}
+
+.stacked-bar .seg.owner { background: var(--chart-1); }
+.stacked-bar .seg.rental { background: var(--chart-2); }
+.stacked-bar .seg.unknown { background: var(--chart-muted); }
+
+.chart-legend { display: flex; gap: 16px; margin-top: 10px; flex-wrap: wrap; }
+.chart-legend .item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
+.chart-legend .swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; flex: none; }
+.chart-legend .swatch.owner { background: var(--chart-1); }
+.chart-legend .swatch.rental { background: var(--chart-2); }
+.chart-legend .swatch.unknown { background: var(--chart-muted); }
+
+.hbar-chart { display: flex; flex-direction: column; gap: 12px; }
+.hbar-row { display: grid; grid-template-columns: 140px 1fr 46px; align-items: center; gap: 10px; font-size: 12.5px; }
+.hbar-row .hbar-label { color: var(--text-muted); }
+.hbar-track { background: var(--border); border-radius: 4px; height: 14px; overflow: hidden; }
+.hbar-fill { background: var(--chart-1); height: 100%; border-radius: 4px; min-width: 3px; }
+.hbar-row .hbar-value { text-align: right; font-weight: 600; }
+
 /* Responsive -------------------------------------------------------------*/
 
 @media (max-width: 760px) {
@@ -528,5 +591,6 @@ details.raw-json pre {
   .sync-form { grid-template-columns: repeat(2, 1fr); }
   .field-wide { grid-column: span 2; }
   .detail-grid { grid-template-columns: 1fr; }
+  .card-grid-2 { grid-template-columns: 1fr; }
   main { padding: 14px; }
 }
